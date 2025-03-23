@@ -114,7 +114,7 @@ module RubyMinifier
       # Fix consecutive end keywords
       minified.gsub!(/end\s*end/, 'end;end')
 
-      "\"#{minified}\""
+      minified
     end
 
     private
