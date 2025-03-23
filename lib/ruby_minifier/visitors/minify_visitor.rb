@@ -130,11 +130,16 @@ module RubyMinifier
           needs_parens = if OPERATORS.include?(node.name.to_s)
             false
           else
-            true
+            !%w[puts print p].include?(node.name.to_s)
           end
-          @result << "(" if needs_parens
-          visit(node.arguments)
-          @result << ")" if needs_parens
+          if needs_parens
+            @result << "("
+            visit(node.arguments)
+            @result << ")"
+          else
+            @result << " " unless OPERATORS.include?(node.name.to_s)
+            visit(node.arguments)
+          end
         end
 
         if node.block
