@@ -36,7 +36,7 @@ class TestRubyMinifier < Minitest::Test
   def test_string_interpolation
     code = <<~RUBY
       name = "John"
-      puts "Hello, #{name}!"
+      puts "Hello, \#{name}!"
     RUBY
 
     expected = 'name="John";puts"Hello, #{name}!"'

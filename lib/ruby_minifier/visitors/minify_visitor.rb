@@ -6,19 +6,26 @@ module RubyMinifier
       OPERATORS = %w[+ - * / % ** & | ^ << >> && || < <= > >= == === != =~ !~ <=>].freeze
       NEEDS_PARENS = %w[* / %].freeze
 
+      OPERATOR_PRECEDENCE = {
+        "**" => 16,
+        "*" => 15, "/" => 15, "%" => 15,
+        "+" => 14, "-" => 14,
+        "==" => 9, "!=" => 9, ">" => 9, "<" => 9, ">=" => 9, "<=" => 9,
+        "&&" => 8,
+        "||" => 7
+      }.freeze
+
       def initialize
         @result = []
       end
 
       def visit(node)
         super
-        result = @result.join
-        result.gsub(/^# encoding: [A-Z0-9-]+\n#\s+valid: true\n/, '')
+        @result.join.force_encoding("UTF-8")
       end
 
       def visit_program_node(node)
         visit(node.statements)
-        @result = @result.reject { |part| part.match?(/^# encoding: [A-Z0-9-]+$/) || part.match?(/^#\s+valid: true$/) }
       end
 
       def visit_statements_node(node)
@@ -62,9 +69,15 @@ module RubyMinifier
       end
 
       def visit_string_node(node)
-        @result << "\""
-        @result << node.content.gsub('"', '\\"')
-        @result << "\""
+        if node.content.include?("\#{")
+          @result << "\""
+          @result << node.content.gsub('"', '\\"')
+          @result << "\""
+        else
+          @result << "\""
+          @result << node.content.gsub('"', '\\"')
+          @result << "\""
+        end
       end
 
       def visit_integer_node(node)
@@ -88,41 +101,42 @@ module RubyMinifier
       end
 
       def visit_call_node(node)
-        # レシーバーの処理
         if node.receiver
           receiver_needs_parens = needs_parens?(node.receiver, node)
           @result << "(" if receiver_needs_parens
           visit(node.receiver)
           @result << ")" if receiver_needs_parens
 
-          # メソッド名の処理
           method_name = node.name.to_s
-          if method_name.end_with?("=") || !OPERATORS.include?(method_name)
-            @result << "."
+          if method_name == "[]"
+            @result << "["
+            visit(node.arguments) if node.arguments
+            @result << "]"
+            return
+          end
+
+          # 演算子メソッドの場合は特別な処理
+          if OPERATORS.include?(method_name)
             @result << method_name
           else
-            # 演算子メソッドの場合は直接演算子を出力
+            @result << "."
             @result << method_name
           end
         else
           @result << node.name
         end
 
-        # 引数の処理
         if node.arguments && !node.arguments.arguments.empty?
-          # 演算子メソッドまたは特別なメソッドの場合は括弧を省略可能
           needs_parens = if OPERATORS.include?(node.name.to_s)
             false
           else
-            !%w[puts print p].include?(node.name.to_s) || 
-            node.arguments.arguments.any? { |arg| arg.class.name.end_with?("CallNode") || arg.class.name.end_with?("BinaryNode") }
+            true
           end
           @result << "(" if needs_parens
           visit(node.arguments)
           @result << ")" if needs_parens
         end
 
-        # ブロックの処理
         if node.block
           visit(node.block)
         end
@@ -196,18 +210,23 @@ module RubyMinifier
       end
 
       def visit_binary_node(node)
-        left_needs_parens = needs_parens?(node.left, node)
-        right_needs_parens = needs_parens?(node.right, node)
-        
-        @result << "(" if left_needs_parens
-        visit(node.left)
-        @result << ")" if left_needs_parens
-        
-        @result << node.operator
-        
-        @result << "(" if right_needs_parens
-        visit(node.right)
-        @result << ")" if right_needs_parens
+        puts "Binary Node Class: #{node.class}"
+        puts "Parent Node Class: #{@current_parent.class}" if @current_parent
+        if needs_parens?(node, @current_parent)
+          @result << "("
+          with_parent(node) do
+            visit(node.left)
+            @result << node.operator
+            visit(node.right)
+          end
+          @result << ")"
+        else
+          with_parent(node) do
+            visit(node.left)
+            @result << node.operator
+            visit(node.right)
+          end
+        end
       end
 
       def visit_if_node(node)
@@ -254,16 +273,7 @@ module RubyMinifier
             @result << part.content.gsub('"', '\\"')
           when Prism::EmbeddedStatementsNode
             @result << "\#{"
-            # 一時的に結果を保存
-            current_size = @result.size
             visit(part.statements)
-            # 補完部分の結果を取得
-            interpolated = @result[current_size..-1].join
-            # 余分なクォートを削除
-            interpolated = interpolated.gsub(/\A"(.*)"\z/, '\1') if interpolated.start_with?('"') && interpolated.end_with?('"')
-            # 結果を更新
-            @result = @result[0...current_size]
-            @result << interpolated
             @result << "}"
           end
         end
@@ -296,53 +306,54 @@ module RubyMinifier
         end
       end
 
+      def visit_interpolated_string_node(node)
+        @result << "\""
+        node.parts.each do |part|
+          case part
+          when Prism::StringNode
+            @result << part.content.gsub('"', '\\"')
+          else
+            @result << "\#{"
+            visit(part)
+            @result << "}"
+          end
+        end
+        @result << "\""
+      end
+
       private
 
-      def needs_parens?(node, parent)
-        return false unless node.class.name.end_with?("CallNode") || node.class.name.end_with?("BinaryNode")
-        
-        # CallNodeの場合は特別な処理
-        if node.class.name.end_with?("CallNode")
-          return false unless parent.class.name.end_with?("BinaryNode")
-          return true if parent.respond_to?(:operator) && NEEDS_PARENS.include?(parent.operator)
-          return false
-        end
-        
-        # 同じ演算子の場合の特別処理
-        if node.respond_to?(:operator) && parent.respond_to?(:operator)
-          return false if node.operator == parent.operator && %w[+ * && ||].include?(parent.operator)
-          
-          # NEEDS_PARENSに含まれる演算子の場合は必ず括弧が必要
-          return true if NEEDS_PARENS.include?(node.operator)
-          
-          operator_precedence = {
-            "**" => 1,
-            "*" => 2, "/" => 2, "%" => 2,
-            "+" => 3, "-" => 3,
-            "<<" => 4, ">>" => 4,
-            "&" => 5,
-            "^" => 6,
-            "|" => 7,
-            "<=" => 8, ">=" => 8, "<" => 8, ">" => 8,
-            "==" => 9, "===" => 9, "!=" => 9, "=~" => 9, "!~" => 9,
-            "&&" => 10,
-            "||" => 11
-          }
-          
-          node_precedence = operator_precedence[node.operator] || 0
-          parent_precedence = operator_precedence[parent.operator] || 0
+      def needs_parens?(node, parent = nil)
+        return false unless parent
+        return false unless node.respond_to?(:operator) || node.class.name.end_with?("CallNode")
 
-          # 優先順位が同じ場合は右結合の演算子（**）のみ括弧が必要
-          return true if node_precedence == parent_precedence && node.operator == "**"
-          
-          # 左辺の場合は優先順位が同じでも括弧が必要
-          if parent.left == node
-            return node_precedence >= parent_precedence
+        if parent.respond_to?(:operator)
+          # CallNodeの場合は特別な処理
+          if node.class.name.end_with?("CallNode")
+            return true if NEEDS_PARENS.include?(parent.operator)
+            return false
           end
-          
-          return node_precedence > parent_precedence
+
+          # BinaryNodeの場合の処理
+          if node.respond_to?(:operator)
+            # 同じ演算子の場合は結合的な演算子のみ括弧を省略
+            return false if node.operator == parent.operator && %w[+ * && ||].include?(parent.operator)
+            
+            # 必ず括弧が必要な演算子の場合
+            return true if NEEDS_PARENS.include?(node.operator)
+            
+            node_precedence = OPERATOR_PRECEDENCE[node.operator] || 0
+            parent_precedence = OPERATOR_PRECEDENCE[parent.operator] || 0
+
+            # 優先順位が同じか低い場合は括弧が必要
+            if node_precedence <= parent_precedence
+              # 右結合演算子（**）の場合は特別処理
+              return false if node.operator == "**" && parent.operator == "**" && parent.right == node
+              return true
+            end
+          end
         end
-        
+
         false
       end
 
