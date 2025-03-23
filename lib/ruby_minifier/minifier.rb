@@ -2,7 +2,7 @@ require 'prism'
 
 module RubyMinifier
   class Minifier
-    REMOVALS = %i[COMMENT IGNORED_NEWLINE]
+    REMOVALS = %i[COMMENT IGNORED_NEWLINE NEWLINE EOF]
     SPACE_AFTER = %i[KEYWORD_DEF KEYWORD_CLASS KEYWORD_MODULE IDENTIFIER CONSTANT KEYWORD_RETURN]
     SPACE_BEFORE = %i[IDENTIFIER CONSTANT]
     NO_SPACE_BEFORE = %i[PARENTHESIS_LEFT COMMA DOT]
@@ -14,9 +14,18 @@ module RubyMinifier
     BLOCK_TOKENS = %i[KEYWORD_DO]
     NEED_SPACE_BEFORE = %i[KEYWORD_DO]
 
+    def initialize
+      # Prismは初期化不要
+    end
+
     def minify(code)
-      tokens = Prism.lex(code).value
-      minified = ""
+      result = Prism.lex(code)
+      tokens = result.value.reject { |token_with_metadata| 
+        token = token_with_metadata[0]
+        REMOVALS.include?(token.type) || token.type == :COMMENT
+      }
+      
+      minified = String.new
       previous_token = nil
       need_semicolon = false
       in_string = false
@@ -25,12 +34,12 @@ module RubyMinifier
       brace_depth = 0
       next_token = nil
       in_interpolation = false
-      interpolation_buffer = ""
+      interpolation_buffer = String.new
       interpolation_tokens = []
 
       tokens.each_with_index do |token_with_metadata, index|
         token = token_with_metadata[0]
-        next if token.nil? || REMOVALS.include?(token.type)
+        next if token.nil?
 
         # Look ahead to next token
         next_token = tokens[index + 1]&.first if index + 1 < tokens.length
