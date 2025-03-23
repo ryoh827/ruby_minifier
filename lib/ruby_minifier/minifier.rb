@@ -8,6 +8,9 @@ module RubyMinifier
     NO_SPACE_BEFORE = %i[PARENTHESIS_LEFT COMMA DOT]
     NO_SPACE_AFTER = %i[PARENTHESIS_RIGHT DOT]
     STRING_TOKENS = %i[STRING_BEGIN STRING_CONTENT STRING_END]
+    KEYWORDS = %i[KEYWORD_DEF KEYWORD_CLASS KEYWORD_MODULE KEYWORD_RETURN]
+    NEED_SEMICOLON_AFTER = %i[CONSTANT INTEGER STRING_END PARENTHESIS_RIGHT]
+    NO_SEMICOLON_BEFORE = %i[KEYWORD_END PARENTHESIS_LEFT COMMA DOT PLUS STAR EQUAL STRING_BEGIN]
 
     # def self.minify_file(path)
     #   code = File.read(path, encoding: Encoding::UTF_8)
@@ -21,10 +24,24 @@ module RubyMinifier
       need_semicolon = false
       in_string = false
       string_content = false
+      parentheses_depth = 0
+      next_token = nil
 
-      tokens.each do |token_with_metadata|
+      tokens.each_with_index do |token_with_metadata, index|
         token = token_with_metadata[0]
         next if token.nil? || REMOVALS.include?(token.type)
+
+        # Look ahead to next token
+        next_token = tokens[index + 1]&.first if index + 1 < tokens.length
+
+        # Add semicolon before certain tokens
+        if need_semicolon && 
+           !in_string &&
+           parentheses_depth == 0 &&
+           !NO_SEMICOLON_BEFORE.include?(token.type)
+          minified << ";"
+          need_semicolon = false
+        end
 
         # Track string state
         if token.type == :STRING_BEGIN
@@ -37,34 +54,35 @@ module RubyMinifier
           string_content = false
         end
 
-        # Add semicolon before certain tokens
-        if need_semicolon && 
-           !in_string &&
-           ![:KEYWORD_END, :PARENTHESIS_RIGHT, :PARENTHESIS_LEFT, :COMMA, :DOT, :PLUS, :STAR, :EQUAL, :STRING_BEGIN].include?(token.type) &&
-           ![:PARENTHESIS_RIGHT, :COMMA, :DOT, :PLUS, :STAR, :STRING_END].include?(previous_token&.type)
-          minified << ";"
-          need_semicolon = false
+        # Track parentheses depth
+        if token.type == :PARENTHESIS_LEFT
+          parentheses_depth += 1
+        elsif token.type == :PARENTHESIS_RIGHT
+          parentheses_depth -= 1
+          if parentheses_depth == 0 && next_token && !NO_SEMICOLON_BEFORE.include?(next_token.type)
+            need_semicolon = true
+          end
         end
 
-        # Add space between keywords and identifiers
+        # Add space between keywords and identifiers/constants
         if previous_token && 
-           ((previous_token.type == :KEYWORD_DEF && token.type == :IDENTIFIER) ||
-            (previous_token.type == :KEYWORD_CLASS && (token.type == :CONSTANT || token.type == :IDENTIFIER)) ||
-            (previous_token.type == :KEYWORD_RETURN && token.type == :IDENTIFIER))
+           KEYWORDS.include?(previous_token.type) &&
+           (token.type == :IDENTIFIER || token.type == :CONSTANT) &&
+           !in_string
           minified << " "
         end
 
         minified << token.value
 
         # Set need_semicolon flag after certain tokens
-        need_semicolon = if string_content
+        need_semicolon = if string_content || parentheses_depth > 0
           false
         else
           case token.type
-          when :KEYWORD_END, :STRING_END, :IDENTIFIER, :CONSTANT, :INTEGER, :PARENTHESIS_RIGHT
-            true
+          when :IDENTIFIER
+            next_token && !NO_SEMICOLON_BEFORE.include?(next_token.type) && next_token.type != :STRING_BEGIN
           else
-            false
+            NEED_SEMICOLON_AFTER.include?(token.type) || token.type == :KEYWORD_END
           end
         end
 
@@ -79,8 +97,6 @@ module RubyMinifier
       minified.gsub!(/\s*,\s*/, ',')
       # Fix assignment operator spacing
       minified.gsub!(/\s*=\s*/, '=')
-      # Fix string spacing
-      minified.gsub!(/\s*'/, "'")
       # Fix multiple spaces
       minified.gsub!(/\s+/, ' ')
       # Fix multiple semicolons
@@ -93,18 +109,8 @@ module RubyMinifier
       minified.gsub!(/;=/, '=')
       # Remove semicolon between method call and arguments
       minified.gsub!(/;([\w.]+)\(/, '\1(')
-      # Remove semicolon in string content
-      minified.gsub!(/'([^']*);([^']*)'/, "'\1\2'")
-      # Add semicolon after closing parenthesis
-      minified.gsub!(/\)(\w)/, ');\\1')
       # Add semicolon before end
       minified.gsub!(/([^\s;])end/, '\1;end')
-      # Add semicolon after string literals
-      minified.gsub!(/'([^']+)'([^;)\s])/, "'\\1';\\2")
-      # Add semicolon after method calls
-      minified.gsub!(/\)([^;)\s])/, ');\1')
-      # Remove trailing semicolon and space
-      minified.gsub!(/[;\s]+$/, '')
       # Fix spacing around semicolons
       minified.gsub!(/\s*;\s*/, ';')
       # Fix end keyword spacing
@@ -113,6 +119,8 @@ module RubyMinifier
       minified.gsub!(/([+*])\s*end/, '\1;end')
       # Fix consecutive end keywords
       minified.gsub!(/end\s*end/, 'end;end')
+      # Remove trailing semicolon and space
+      minified.gsub!(/[;\s]+$/, '')
 
       minified
     end
