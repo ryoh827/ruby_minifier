@@ -12,6 +12,71 @@ class TestRubyMinifier < Minitest::Test
     refute_nil ::RubyMinifier::VERSION
   end
 
+  def test_basic_minification
+    code = <<~RUBY
+      def hello
+        puts "Hello, World!"
+      end
+    RUBY
+
+    expected = "def hello;puts\"Hello, World!\";end"
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_operator_precedence
+    code = <<~RUBY
+      x = 1 + 2 * 3
+      y = (a + b) * (c - d)
+    RUBY
+
+    expected = "x=1+2*3;y=(a+b)*(c-d)"
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_string_interpolation
+    code = <<~RUBY
+      name = "John"
+      puts "Hello, #{name}!"
+    RUBY
+
+    expected = 'name="John";puts"Hello, #{name}!"'
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_method_call
+    code = <<~RUBY
+      object.method(arg1, arg2)
+      puts(value)
+    RUBY
+
+    expected = "object.method(arg1,arg2);puts(value)"
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_block
+    code = <<~RUBY
+      array.each do |item|
+        process(item)
+      end
+    RUBY
+
+    expected = "array.each do|item|;process(item);end"
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_class_definition
+    code = <<~RUBY
+      class Example
+        def initialize(name)
+          @name = name
+        end
+      end
+    RUBY
+
+    expected = "class Example;def initialize(name);@name=name;end;end"
+    assert_equal expected, @minifier.minify(code)
+  end
+
   def test_token_structure
     code = "puts 'hello'"
     result = Prism.lex(code)
@@ -20,20 +85,6 @@ class TestRubyMinifier < Minitest::Test
     assert_equal 5, tokens.length
     assert_equal :IDENTIFIER, tokens[0][0].type
     assert_equal "puts", tokens[0][0].value
-  end
-
-  def test_basic_minification
-    code = <<~RUBY
-      def hello
-        puts "Hello, World!"
-      end
-    RUBY
-
-    expected = <<~RUBY
-      def hello;puts "Hello, World!";end
-    RUBY
-
-    assert_equal expected.strip, @minifier.minify(code)
   end
 
   def test_comment_removal
@@ -187,22 +238,6 @@ class TestRubyMinifier < Minitest::Test
     assert_equal expected, @minifier.minify(code)
   end
 
-  def test_class_minification
-    code = <<~RUBY
-      class Example
-        def initialize(name)
-          @name = name
-        end
-      end
-    RUBY
-
-    expected = <<~RUBY
-      class Example;def initialize(name);@name=name;end;end
-    RUBY
-
-    assert_equal expected.strip, @minifier.minify(code)
-  end
-
   def test_if_statement_minification
     code = <<~RUBY
       if condition
@@ -214,32 +249,6 @@ class TestRubyMinifier < Minitest::Test
 
     expected = <<~RUBY
       if condition;do_something;else;do_other_thing;end
-    RUBY
-
-    assert_equal expected.strip, @minifier.minify(code)
-  end
-
-  def test_method_call_minification
-    code = <<~RUBY
-      object.method("arg1", "arg2")
-    RUBY
-
-    expected = <<~RUBY
-      object.method("arg1","arg2")
-    RUBY
-
-    assert_equal expected.strip, @minifier.minify(code)
-  end
-
-  def test_block_minification
-    code = <<~RUBY
-      array.each do |item|
-        process(item)
-      end
-    RUBY
-
-    expected = <<~RUBY
-      array.each do|item|;process(item);end
     RUBY
 
     assert_equal expected.strip, @minifier.minify(code)
