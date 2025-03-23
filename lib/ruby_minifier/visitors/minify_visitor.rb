@@ -1,385 +1,363 @@
 module RubyMinifier
   module Visitors
     class MinifyVisitor < Prism::Visitor
-      OPERATORS = {
-        "+" => "+",
-        "-" => "-",
-        "*" => "*",
-        "/" => "/",
-        "==" => "==",
-        "!=" => "!=",
-        "&&" => "&&",
-        "||" => "||",
-        "<" => "<",
-        ">" => ">",
-        "<=" => "<=",
-        ">=" => ">=",
-        "[]" => "[]",
-        "<<" => "<<",
-      }
-
       OPERATOR_PRECEDENCE = {
-        "||" => 1,
-        "&&" => 2,
-        "==" => 3,
-        "!=" => 3,
-        "<" => 3,
-        ">" => 3,
-        "<=" => 3,
-        ">=" => 3,
-        "+" => 4,
-        "-" => 4,
-        "*" => 5,
-        "/" => 5,
-        "[]" => 6,
-        "<<" => 6,
-      }
+        "**" => 7,
+        "*" => 6,
+        "/" => 6,
+        "%" => 6,
+        "+" => 5,
+        "-" => 5,
+        "<<" => 4,
+        ">>" => 4,
+        "&" => 3,
+        "^" => 2,
+        "|" => 1,
+        "==" => 0,
+        "!=" => 0,
+        ">" => 0,
+        ">=" => 0,
+        "<" => 0,
+        "<=" => 0,
+        "&&" => 0,
+        "||" => 0
+      }.freeze
 
-      def initialize(configuration)
+      BINARY_OPERATORS = OPERATOR_PRECEDENCE.keys.freeze
+
+      KEYWORDS = %w[class def if else end do].freeze
+
+      def initialize(configuration = nil)
         @configuration = configuration
-        @output = String.new
-        @previous_token = nil
-        @needs_semicolon = false
-        @in_block = false
-        @in_method = false
+        @string_processor = StringProcessor.new(configuration)
+      end
+
+      def visit(node)
+        return "" unless node
+        return node.to_s if node.is_a?(String) || node.is_a?(Symbol) || node.is_a?(Numeric)
+        super
+      end
+
+      def extract_node_value(node)
+        return "" unless node
+        return node.to_s if node.is_a?(String) || node.is_a?(Symbol) || node.is_a?(Numeric)
+        return node.value.to_s if node.respond_to?(:value) && !node.is_a?(Prism::CallNode)
+        return node.content.to_s if node.respond_to?(:content)
+        return node.name.to_s if node.respond_to?(:name)
+        visit(node)
       end
 
       def visit_program_node(node)
-        node.statements.accept(self)
-        @output
+        @string_processor.process_string(visit(node.statements).to_s)
       end
 
       def visit_statements_node(node)
-        return unless node.body
-
-        node.body.each_with_index do |statement, index|
-          # Add semicolon before statement if needed
-          if @needs_semicolon && !statement.is_a?(Prism::DefNode) && !statement.is_a?(Prism::ClassNode)
-            @output << ";"
-            @needs_semicolon = false
-          end
-
-          # Process the statement
-          statement.accept(self)
-
-          # Set semicolon flag for next statement
-          unless statement.is_a?(Prism::DefNode) || 
-                 statement.is_a?(Prism::ClassNode) || 
-                 statement.is_a?(Prism::ModuleNode) ||
-                 statement.is_a?(Prism::BlockNode) ||
-                 statement.is_a?(Prism::IfNode) ||
-                 statement.is_a?(Prism::WhileNode) ||
-                 statement.is_a?(Prism::UntilNode)
-            @needs_semicolon = true
-          end
-        end
+        return "" unless node.body
+        node.body.map { |statement| visit(statement) }.join(";")
       end
 
       def visit_def_node(node)
-        was_in_method = @in_method
-        @in_method = true
-        @output << "def "
-        @output << node.name.to_s
-        if node.parameters
-          @output << "("
-          node.parameters.accept(self)
-          @output << ")"
-        end
+        result = []
+        result << "def "
+        result << node.name
+        result << "(#{visit(node.parameters)})" if node.parameters
         if node.body
-          @output << ";"
-          node.body.accept(self)
+          result << ";"
+          result << visit(node.body).to_s
         end
-        @output << "end"
-        @in_method = was_in_method
-        @needs_semicolon = true
-      end
-
-      def visit_class_node(node)
-        @output << "class "
-        node.constant_path.accept(self)
-        @output << ";"
-        node.body.accept(self)
-        @output << "end"
-        @needs_semicolon = true
-      end
-
-      def visit_module_node(node)
-        @output << "module "
-        node.constant_path.accept(self)
-        @output << ";"
-        node.body.accept(self)
-        @output << "end"
-        @needs_semicolon = true
-      end
-
-      def visit_constant_path_node(node)
-        node.parts.each_with_index do |part, index|
-          @output << "::" if index > 0
-          part.accept(self)
-        end
-      end
-
-      def visit_constant_read_node(node)
-        @output << node.name.to_s
-      end
-
-      def visit_identifier_node(node)
-        @output << node.name.to_s
-      end
-
-      def visit_string_node(node)
-        content = node.content.to_s
-        if content.include?('"') && !content.include?("'")
-          @output << "'" << content.gsub("\\", "\\\\").gsub("'", "\\\\'") << "'"
-        else
-          @output << '"' << content.gsub("\\", "\\\\").gsub('"', '\\"') << '"'
-        end
-      end
-
-      def visit_integer_node(node)
-        @output << node.value.to_s
-      end
-
-      def needs_parentheses?(node, parent_precedence)
-        return false unless node.is_a?(Prism::CallNode)
-        operator = OPERATORS[node.name.to_s]
-        return false unless operator
-        node_precedence = OPERATOR_PRECEDENCE[operator]
-        node_precedence < parent_precedence
-      end
-
-      def visit_call_node(node)
-        operator = OPERATORS[node.name.to_s]
-        if operator && node.receiver && node.arguments && node.arguments.arguments.length == 1
-          # Handle binary operators
-          current_precedence = OPERATOR_PRECEDENCE[operator]
-          
-          # Handle receiver
-          if needs_parentheses?(node.receiver, current_precedence)
-            @output << "("
-            node.receiver.accept(self)
-            @output << ")"
-          else
-            node.receiver.accept(self)
-          end
-
-          if operator == "[]"
-            @output << operator[0]
-            node.arguments.arguments.first.accept(self)
-            @output << operator[1]
-          else
-            @output << operator
-
-            # Handle argument
-            arg = node.arguments.arguments.first
-            if needs_parentheses?(arg, current_precedence)
-              @output << "("
-              arg.accept(self)
-              @output << ")"
-            else
-              arg.accept(self)
-            end
-          end
-        else
-          # Handle normal method calls
-          if node.receiver
-            node.receiver.accept(self)
-            @output << "."
-          end
-          @output << node.name.to_s
-          if node.arguments
-            @output << "("
-            node.arguments.accept(self)
-            @output << ")"
-          end
-          if node.block
-            node.block.accept(self)
-          end
-        end
-        @needs_semicolon = true
-      end
-
-      def visit_arguments_node(node)
-        node.arguments.each_with_index do |arg, index|
-          @output << "," if index > 0
-          arg.accept(self)
-        end
-      end
-
-      def visit_block_node(node)
-        was_in_block = @in_block
-        @in_block = true
-        
-        @output << " do"
-        if node.parameters
-          @output << "|"
-          node.parameters.accept(self)
-          @output << "|"
-        end
-        
-        if node.body
-          @output << ";"
-          node.body.accept(self)
-        end
-        
-        @output << "end"
-        @in_block = was_in_block
-        @needs_semicolon = true
+        result << ";end"
+        result.join
       end
 
       def visit_parameters_node(node)
         params = []
-        params.concat(node.requireds.map { |param| param.name.to_s }) if node.requireds
-        params.concat(node.optionals.map { |param| "#{param.name}=#{param.value}" }) if node.optionals
-        @output << params.join(",")
+        if node.requireds
+          params.concat(node.requireds.map { |param| param.name.to_s })
+        end
+        if node.optionals
+          params.concat(node.optionals.map { |param| "#{param.name}=#{visit(param.value)}" })
+        end
+        if node.rest
+          params << "*#{node.rest.name}"
+        end
+        if node.posts
+          params.concat(node.posts.map { |param| param.name.to_s })
+        end
+        if node.keywords
+          params.concat(node.keywords.map { |param| "#{param.name}:#{visit(param.value)}" })
+        end
+        if node.block
+          params << "&#{node.block.name}"
+        end
+        params.join(",")
+      end
+
+      def visit_required_parameter_node(node)
+        node.name.to_s
+      end
+
+      def visit_optional_parameter_node(node)
+        "#{node.name}=#{visit(node.value)}"
+      end
+
+      def visit_block_parameters_node(node)
+        return "" unless node.parameters
+        params = []
+        if node.parameters.requireds
+          params.concat(node.parameters.requireds.map { |param| param.name.to_s })
+        end
+        if node.parameters.optionals
+          params.concat(node.parameters.optionals.map { |param| "#{param.name}=#{visit(param.value)}" })
+        end
+        if node.parameters.rest
+          params << "*#{node.parameters.rest.name}"
+        end
+        if node.parameters.posts
+          params.concat(node.parameters.posts.map { |param| param.name.to_s })
+        end
+        if node.parameters.keywords
+          params.concat(node.parameters.keywords.map { |param| "#{param.name}:#{visit(param.value)}" })
+        end
+        if node.parameters.block
+          params << "&#{node.parameters.block.name}"
+        end
+        params.join(",")
+      end
+
+      def visit_block_node(node)
+        parts = []
+        if node.parameters
+          params = visit(node.parameters)
+          parts << "|#{params}|" unless params.empty?
+        end
+        if node.body
+          body = visit(node.body)
+          parts << body unless body.empty?
+        end
+        parts << "end"
+        parts.join(";")
+      end
+
+      def visit_binary_node(node)
+        left = visit(node.left)
+        right = visit(node.right)
+        operator = node.operator.to_s
+
+        case operator
+        when "+", "-", "*", "/", "==", "!=", ">", ">=", "<", "<=", "&&", "||"
+          "#{left}#{operator}#{right}"
+        else
+          "#{left}#{operator}#{right}"
+        end
       end
 
       def visit_if_node(node)
-        @output << "if "
-        node.predicate.accept(self)
-        @output << ";"
-        node.statements.accept(self)
+        result = "if #{visit(node.predicate)};"
+        if node.statements
+          result += visit(node.statements)
+        end
         if node.consequent
-          @output << "else;"
-          node.consequent.accept(self)
+          result += ";"
+          result += visit(node.consequent)
         end
-        @output << "end"
-        @needs_semicolon = true
+        result += ";end"
+        result
       end
 
-      def visit_while_node(node)
-        @output << "while "
-        node.predicate.accept(self)
-        @output << ";"
-        node.statements.accept(self)
-        @output << "end"
-        @needs_semicolon = true
+      def visit_call_node(node)
+        parts = []
+        parts << visit(node.receiver) if node.receiver
+        parts << node.call_operator if node.call_operator
+        parts << node.name
+
+        if node.arguments&.arguments&.any?
+          args = node.arguments.arguments.map { |arg| visit(arg) }
+          case node.name.to_s
+          when "puts"
+            content = args.join(", ")
+            content = content.gsub(/^"|"$/, '') if content.start_with?('"') && content.end_with?('"')
+            parts << " \"#{content}\""
+          when "[]"
+            parts << "[#{args.join(",")}]"
+          else
+            parts << "(#{args.join(",")})"
+          end
+        end
+
+        if node.block
+          parts << " do"
+          parts << visit(node.block)
+        end
+
+        parts.join
       end
 
-      def visit_until_node(node)
-        @output << "until "
-        node.predicate.accept(self)
-        @output << ";"
-        node.statements.accept(self)
-        @output << "end"
-        @needs_semicolon = true
-      end
-
-      def visit_return_node(node)
-        @output << "return"
-        if node.arguments
-          @output << " "
-          node.arguments.accept(self)
+      def visit_string_node(node)
+        content = node.content.to_s
+        if content.include?('"') || content.include?("\#{")
+          "'#{content.gsub("'", "\\'")}'"
+        else
+          "\"#{content}\""
         end
       end
 
-      def visit_assignment_node(node)
-        node.target.accept(self)
-        @output << "="
-        node.value.accept(self)
-      end
-
-      def visit_operator_assignment_node(node)
-        node.target.accept(self)
-        @output << node.operator
-        node.value.accept(self)
-      end
-
-      def visit_instance_variable_write_node(node)
-        @output << node.name.to_s
-        @output << "="
-        node.value.accept(self)
-      end
-
-      def visit_instance_variable_read_node(node)
-        @output << node.name.to_s
-      end
-
-      def visit_array_node(node)
-        @output << "["
-        node.elements.each_with_index do |element, index|
-          @output << "," if index > 0
-          element.accept(self)
+      def visit_string_interpolation_node(node)
+        parts = node.parts.map do |part|
+          case part
+          when Prism::StringNode
+            part.content.to_s
+          when Prism::EmbeddedStatementsNode
+            value = visit(part.statements)
+            "\#{#{value}}"
+          else
+            visit(part)
+          end
         end
-        @output << "]"
+        "\"#{parts.join}\""
       end
 
-      def visit_hash_node(node)
-        @output << "{"
-        node.elements.each_with_index do |element, index|
-          @output << "," if index > 0
-          element.accept(self)
-        end
-        @output << "}"
+      def visit_embedded_statements_node(node)
+        visit(node.statements)
       end
 
-      def visit_pair_node(node)
-        node.key.accept(self)
-        @output << ":"
-        node.value.accept(self)
-      end
-
-      def visit_symbol_node(node)
-        @output << ":"
-        @output << node.value.to_s
+      def visit_arguments_node(node)
+        node.arguments.map { |arg| visit(arg) }.join(",")
       end
 
       def visit_local_variable_read_node(node)
-        @output << node.name.to_s
+        node.name.to_s
       end
 
       def visit_local_variable_write_node(node)
-        @output << node.name.to_s
-        @output << "="
-        node.value.accept(self)
+        "#{node.name}=#{visit(node.value)}"
       end
 
-      def visit_string_concat_node(node)
-        node.left.accept(self)
-        node.right.accept(self)
+      def visit_instance_variable_read_node(node)
+        node.name.to_s
       end
 
-      def visit_interpolated_string_node(node)
-        @output << '"'
-        node.parts.each do |part|
-          if part.is_a?(Prism::StringNode)
-            @output << part.content.to_s.gsub("\\", "\\\\").gsub('"', '\\"')
-          else
-            @output << "\#{"
-            part.accept(self)
-            @output << "}"
-          end
+      def visit_instance_variable_write_node(node)
+        "#{node.name}=#{visit(node.value)}"
+      end
+
+      def visit_constant_read_node(node)
+        node.name.to_s
+      end
+
+      def visit_constant_write_node(node)
+        "#{node.name}=#{visit(node.value)}"
+      end
+
+      def visit_constant_path_node(node)
+        if node.parent
+          "#{visit(node.parent)}::#{node.child.name}"
+        else
+          node.child.name.to_s
         end
-        @output << '"'
-        @needs_semicolon = true
       end
 
-      def visit_range_node(node)
-        node.left.accept(self)
-        @output << ".."
-        node.right.accept(self)
+      def visit_integer_node(node)
+        node.value.to_s
       end
 
-      def visit_parentheses_node(node)
-        @output << "("
-        node.body.accept(self)
-        @output << ")"
+      def visit_float_node(node)
+        node.value.to_s
       end
 
-      def visit_begin_node(node)
-        node.statements.accept(self)
+      def visit_true_node(node)
+        "true"
+      end
+
+      def visit_false_node(node)
+        "false"
+      end
+
+      def visit_nil_node(node)
+        "nil"
+      end
+
+      def visit_class_node(node)
+        result = []
+        result << "class "
+        result << visit(node.constant_path)
+        result << "<#{visit(node.superclass)}" if node.superclass
+        if node.body
+          result << ";"
+          result << visit(node.body)
+        end
+        result << ";end"
+        result.join
+      end
+
+      def visit_hash_node(node)
+        elements = node.elements.map { |element| visit(element) }
+        "{#{elements.join(",")}}"
+      end
+
+      def visit_pair_node(node)
+        key = visit(node.key)
+        value = visit(node.value)
+        "#{key}:#{value}"
+      end
+
+      def visit_assoc_node(node)
+        "#{visit(node.key)}:#{visit(node.value)}"
+      end
+
+      def visit_symbol_node(node)
+        ":#{node.value}"
+      end
+
+      def visit_array_node(node)
+        "[#{node.elements.map { |element| visit(element) }.join(",")}]"
       end
 
       def visit_else_node(node)
-        node.statements.accept(self)
+        result = "else"
+        if node.statements
+          result += ";"
+          result += visit(node.statements)
+        end
+        result
       end
 
-      def visit_ensure_node(node)
-        node.statements.accept(self)
+      def visit_range_node(node)
+        "#{visit(node.left)}..#{visit(node.right)}"
       end
 
-      def visit_rescue_node(node)
-        node.statements.accept(self)
+      def visit_parentheses_node(node)
+        if node.body
+          visit(node.body)
+        else
+          "()"
+        end
+      end
+
+      private
+
+      def needs_parentheses?(operand_precedence, current_precedence, is_right = false)
+        return false unless operand_precedence && current_precedence
+        is_right ? operand_precedence > current_precedence : operand_precedence >= current_precedence
+      end
+
+      def operator_precedence(node)
+        return nil unless node.respond_to?(:operator)
+        OPERATOR_PRECEDENCE[node.operator.to_s]
+      end
+
+      def format_string_literal(content)
+        return content if content.start_with?('"') && content.end_with?('"')
+        return content if content.start_with?("'") && content.end_with?("'")
+        
+        if content.include?('"') || content.include?("\#{")
+          "'#{content.gsub("'", "\\'")}'"
+        else
+          "\"#{content}\""
+        end
+      end
+
+      def add_space_after_keyword(keyword)
+        KEYWORDS.include?(keyword.to_s) ? "#{keyword} " : keyword
       end
     end
   end
