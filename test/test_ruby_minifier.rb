@@ -104,6 +104,81 @@ class TestRubyMinifier < Minitest::Test
     assert_equal expected, @minifier.minify(code)
   end
 
+  def test_complex_string_interpolation
+    code = <<~RUBY
+      name = "John"
+      age = 30
+      puts "Name: \#{name}, Age: \#{age}"
+      puts "Hash access: \#{hash[:key]}"
+      puts "Nested hash: \#{nested[:key][:subkey]}"
+      puts "Method call: \#{object.method}"
+      puts "Multiple: \#{first} \#{second}"
+    RUBY
+
+    expected = 'name="John";age=30;puts"Name: #{name}, Age: #{age}";puts"Hash access: #{hash[:key]}";puts"Nested hash: #{nested[:key][:subkey]}";puts"Method call: #{object.method}";puts"Multiple: #{first} #{second}"'
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_complex_block_structures
+    code = <<~RUBY
+      array.each do |item|
+        if item.valid?
+          process(item)
+        end
+      end
+
+      hash.each do |key, value|
+        puts "\#{key}: \#{value}"
+      end
+
+      (1..10).each do |i|
+        puts i if i.even?
+      end
+    RUBY
+
+    expected = 'array.each do|item|;if item.valid?;process(item);end;end;hash.each do|key,value|;puts"#{key}: #{value}";end;(1..10).each do|i|;puts i if i.even?;end'
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_operator_spacing
+    code = <<~RUBY
+      x = 1 + 2 * 3
+      y = (a + b) * (c - d)
+      z = x == y && a != b
+      result = value || default
+    RUBY
+
+    expected = 'x=1+2*3;y=(a+b)*(c-d);z=x==y&&a!=b;result=value||default'
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_edge_cases
+    code = <<~RUBY
+      # Empty block
+      def empty
+      end
+
+      # Single line block
+      def single_line; puts "hello"; end
+
+      # Multiple semicolons
+      x = 1;;; y = 2
+
+      # Complex string interpolation
+      puts "\#{hash[:key]}: \#{value}"
+
+      # Nested blocks
+      outer do
+        inner do
+          puts "nested"
+        end
+      end
+    RUBY
+
+    expected = 'def empty;end;def single_line;puts"hello";end;x=1;y=2;puts"#{hash[:key]}: #{value}";outer do;inner do;puts"nested";end;end'
+    assert_equal expected, @minifier.minify(code)
+  end
+
   private
 
   def capture_output
