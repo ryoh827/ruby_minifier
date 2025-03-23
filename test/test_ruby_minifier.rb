@@ -23,9 +23,17 @@ class TestRubyMinifier < Minitest::Test
   end
 
   def test_basic_minification
-    code = "def hello\n  puts 'world'\nend"
-    expected = "def hello;puts'world';end"
-    assert_equal expected, @minifier.minify(code)
+    code = <<~RUBY
+      def hello
+        puts "Hello, World!"
+      end
+    RUBY
+
+    expected = <<~RUBY
+      def hello;puts "Hello, World!";end
+    RUBY
+
+    assert_equal expected.strip, @minifier.minify(code)
   end
 
   def test_comment_removal
@@ -177,6 +185,71 @@ class TestRubyMinifier < Minitest::Test
 
     expected = 'def empty;end;def single_line;puts"hello";end;x=1;y=2;puts"#{hash[:key]}: #{value}";outer do;inner do;puts"nested";end;end'
     assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_class_minification
+    code = <<~RUBY
+      class Example
+        def initialize(name)
+          @name = name
+        end
+      end
+    RUBY
+
+    expected = <<~RUBY
+      class Example;def initialize(name);@name=name;end;end
+    RUBY
+
+    assert_equal expected.strip, @minifier.minify(code)
+  end
+
+  def test_if_statement_minification
+    code = <<~RUBY
+      if condition
+        do_something
+      else
+        do_other_thing
+      end
+    RUBY
+
+    expected = <<~RUBY
+      if condition;do_something;else;do_other_thing;end
+    RUBY
+
+    assert_equal expected.strip, @minifier.minify(code)
+  end
+
+  def test_method_call_minification
+    code = <<~RUBY
+      object.method("arg1", "arg2")
+    RUBY
+
+    expected = <<~RUBY
+      object.method("arg1","arg2")
+    RUBY
+
+    assert_equal expected.strip, @minifier.minify(code)
+  end
+
+  def test_block_minification
+    code = <<~RUBY
+      array.each do |item|
+        process(item)
+      end
+    RUBY
+
+    expected = <<~RUBY
+      array.each do|item|;process(item);end
+    RUBY
+
+    assert_equal expected.strip, @minifier.minify(code)
+  end
+
+  def test_invalid_code
+    code = "def invalid_syntax"
+    assert_raises(RubyMinifier::ParseError) do
+      @minifier.minify(code)
+    end
   end
 
   private
