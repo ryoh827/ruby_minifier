@@ -14,11 +14,6 @@ module RubyMinifier
     BLOCK_TOKENS = %i[KEYWORD_DO]
     NEED_SPACE_BEFORE = %i[KEYWORD_DO]
 
-    # def self.minify_file(path)
-    #   code = File.read(path, encoding: Encoding::UTF_8)
-    #   new.minify(code)
-    # end
-
     def minify(code)
       tokens = Prism.lex(code).value
       minified = ""
@@ -30,6 +25,8 @@ module RubyMinifier
       brace_depth = 0
       next_token = nil
       in_interpolation = false
+      interpolation_buffer = ""
+      interpolation_tokens = []
 
       tokens.each_with_index do |token_with_metadata, index|
         token = token_with_metadata[0]
@@ -60,8 +57,70 @@ module RubyMinifier
           need_semicolon = true if next_token && !NO_SEMICOLON_BEFORE.include?(next_token.type)
         elsif token.type == :EMBEXPR_BEGIN
           in_interpolation = true
+          interpolation_buffer = ""
+          interpolation_tokens = []
+          minified << "\#{"
+          next
         elsif token.type == :EMBEXPR_END
           in_interpolation = false
+          # Process interpolation tokens
+          interpolation_buffer = ""
+          current_segment = ""
+          
+          # Track state
+          in_hash_access = false
+          
+          # First pass: collect tokens and handle special cases
+          i = 0
+          while i < interpolation_tokens.length
+            t = interpolation_tokens[i]
+            case t.type
+            when :BRACKET_LEFT
+              in_hash_access = true
+              current_segment << t.value
+            when :BRACKET_RIGHT
+              in_hash_access = false
+              current_segment << t.value
+              # Look ahead for colon
+              if i + 1 < interpolation_tokens.length && interpolation_tokens[i + 1].type == :COLON
+                i += 1  # Skip the colon
+                interpolation_buffer << current_segment << ": "
+                current_segment = ""
+              else
+                interpolation_buffer << current_segment
+                current_segment = ""
+              end
+            when :COLON
+              if in_hash_access
+                current_segment << t.value
+              end
+            when :SEMICOLON
+              # Skip semicolons in interpolation
+              i += 1
+              next
+            else
+              if in_hash_access
+                current_segment << t.value
+              else
+                interpolation_buffer << t.value
+              end
+            end
+            i += 1
+          end
+          
+          # Add any remaining segment
+          interpolation_buffer << current_segment unless current_segment.empty?
+          
+          # Clean up the interpolation buffer
+          interpolation_buffer.strip!
+          interpolation_buffer.gsub!(/\s+/, ' ')  # Normalize spaces
+          interpolation_buffer.gsub!(/:\s*:/, ':')  # Fix double colons
+          
+          # Add interpolation content with proper #{...} syntax
+          minified << '#{' << interpolation_buffer << '}'
+          need_semicolon = false  # Reset semicolon flag after string interpolation
+          interpolation_tokens.clear  # Clear the buffer for next interpolation
+          next
         end
 
         # Track parentheses and brace depth
@@ -94,7 +153,12 @@ module RubyMinifier
           minified << " "
         end
 
-        minified << token.value
+        # Handle token value
+        if in_interpolation
+          interpolation_tokens << token
+        else
+          minified << token.value
+        end
 
         # Set need_semicolon flag after certain tokens
         need_semicolon = if string_content || in_interpolation
@@ -149,28 +213,47 @@ module RubyMinifier
       minified.gsub!(/end\s*end/, 'end;end')
       # Fix string interpolation spacing
       minified.gsub!(/:\#{/, ': #{')
+      # Remove semicolons in string interpolation
+      minified.gsub!(/\#{([^}]*?);([^}]*?)}/, '#{\\1\\2}')
+      # Remove semicolons before string interpolation
+      minified.gsub!(/;(\s*\#{)/, '\1')
+      # Remove semicolons after string interpolation
+      minified.gsub!(/}(\s*);/, '}')
+      # Fix string interpolation with hash access
+      minified.gsub!(/\#{([^}]*?)\[([^\]]+?)\]:\s*([^}]*?)}/, '#{\\1[\\2]:\\3}')
+      # Remove all unnecessary semicolons and fix spacing
+      minified.gsub!(/\#{([^}]*?)};?\s*:\s*([^}]*?)}/, '#{\\1: \\2}')
+      minified.gsub!(/\#{([^}]*?)\[([^\]]+?)\];?\s*:\s*([^}]*?)}/, '#{\\1[\\2]: \\3}')
       # Remove semicolon before closing parenthesis or brace
       minified.gsub!(/;([)}])/, '\1')
       # Add semicolon after closing parenthesis or brace
       minified.gsub!(/([)}])([^\s;)])/, '\1;\2')
       # Remove semicolon before do keyword
       minified.gsub!(/;(\s*do)/, '\1')
-      # Fix string interpolation
-      minified.gsub!(/\#{([^}]*?)([;:]+)\s*([^}]*?)}/) do |match|
-        content = $1
-        rest = $3
-        if content.end_with?("[:") && (rest.start_with?("operation") || rest.start_with?("result"))
-          "\#{#{content}:#{rest}}"
-        else
-          "\#{#{content}: #{rest}}"
-        end
-      end
-      # Add space before do keyword
-      minified.gsub!(/([^\s])do/, '\1 do')
       # Fix block parameter spacing
       minified.gsub!(/do\s*\|\s*([^|]+?)\s*;?\s*\|/, 'do|\1|')
       # Remove trailing semicolon and space
       minified.gsub!(/[;\s]+$/, '')
+
+      # Clean up string interpolation
+      minified.gsub!(/\#{([^}]*?)\[([^\]]+?)\]:\s*([^}]*?)}/, '#{\\1[\\2]: \\3}')
+      minified.gsub!(/\#{([^}]*?)};?\s*([^}]*?)}/, '#{\\1\\2}')
+      minified.gsub!(/};\s*"/, '}"')
+      minified.gsub!(/;\s*\#{/, ' #{')
+      # Remove double interpolation and fix closing braces
+      minified.gsub!(/\#{\#{/, '#{')
+      minified.gsub!(/}}/, '}')
+      minified.gsub!(/\#{([^}]*?)}\s*\#{([^}]*?)}/, '#{\\1: \\2}')
+      # Fix string interpolation with hash access
+      minified.gsub!(/\#{([^}]*?)\[([^\]]+?)\]:\s*([^}]*?)}/, '#{\\1[\\2]: \\3}')
+      # Fix missing closing braces
+      minified.gsub!(/\#{([^}]*?)\"/, '#{\\1}"')
+      # Fix string interpolation in puts
+      minified.gsub!(/puts\"\#{([^}]*?)}\s*\#{([^}]*?)}\";/, 'puts"#{\\1: \\2}";')
+      # Fix string interpolation with hash access in puts
+      minified.gsub!(/puts\"\#{([^}]*?)\[([^\]]+?)\]:\s*([^}]*?)}\";/, 'puts"#{\\1[\\2]: \\3}";')
+      # Fix string interpolation with hash access and colon
+      minified.gsub!(/\#{([^}]*?)\[([^\]]+?)\]:\s*([^}]*?)}\s*\#{([^}]*?)}/, '#{\\1[\\2]: \\3: \\4}')
 
       minified
     end
