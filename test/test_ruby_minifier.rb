@@ -77,6 +77,19 @@ class TestRubyMinifier < Minitest::Test
     assert_equal expected, @minifier.minify(code)
   end
 
+  def test_module_definition
+    code = <<~RUBY
+      module Example
+        def initialize(name)
+          @name = name
+        end
+      end
+    RUBY
+
+    expected = "module Example;def initialize(name);@name=name;end;end"
+    assert_equal expected, @minifier.minify(code)
+  end
+
   def test_token_structure
     code = "puts 'hello'"
     result = Prism.lex(code)
