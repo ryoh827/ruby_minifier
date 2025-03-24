@@ -48,7 +48,7 @@ module RubyMinifier
       def visit_def_node(node)
         @result << "def "
         @result << node.name
-        if node.parameters && !node.parameters.requireds.empty?
+        if node.parameters
           @result << "("
           visit(node.parameters)
           @result << ")"
@@ -166,7 +166,11 @@ module RubyMinifier
             visit(node.arguments)
             @result << ")"
           else
-            @result << " "
+            # 文字列リテラル以外の場合はスペースを追加
+            first_arg = node.arguments.arguments.first
+            if !first_arg.class.name.end_with?("StringNode") && !first_arg.class.name.end_with?("InterpolatedStringNode")
+              @result << " "
+            end
             visit(node.arguments)
           end
         end
@@ -184,10 +188,26 @@ module RubyMinifier
       end
 
       def visit_parameters_node(node)
-        node.requireds.each_with_index do |param, i|
-          visit(param)
-          @result << "," unless i == node.requireds.length - 1
+        if node.requireds
+          node.requireds.each_with_index do |param, i|
+            visit(param)
+            # 必須パラメータの最後のパラメータの後にはカンマを追加しない
+            # ただし、オプショナルパラメータが存在する場合は追加
+            @result << "," unless i == node.requireds.length - 1 || node.optionals.nil?
+          end
         end
+        if node.optionals
+          node.optionals.each_with_index do |param, i|
+            visit(param)
+            @result << "," unless i == node.optionals.length - 1
+          end
+        end
+      end
+
+      def visit_optional_parameter_node(node)
+        @result << node.name
+        @result << "="
+        visit(node.value)
       end
 
       def visit_local_variable_read_node(node)
@@ -264,15 +284,22 @@ module RubyMinifier
       end
 
       def visit_if_node(node)
-        @result << "if "
-        visit(node.predicate)
-        @result << ";"
-        visit(node.statements)
-        if node.consequent
-          @result << ";else;"
-          visit(node.consequent)
+        # 単一の文で、else節がない場合は後置if文を使用
+        if !node.consequent && node.statements && node.statements.body.length == 1
+          visit(node.statements)
+          @result << " if "
+          visit(node.predicate)
+        else
+          @result << "if "
+          visit(node.predicate)
+          @result << ";"
+          visit(node.statements) if node.statements
+          if node.consequent
+            @result << ";else;"
+            visit(node.consequent)
+          end
+          @result << ";end"
         end
-        @result << ";end"
       end
 
       def visit_array_node(node)
@@ -302,8 +329,14 @@ module RubyMinifier
       end
 
       def visit_assoc_node(node)
-        visit(node.key)
-        @result << ":"
+        # キーがシンボルの場合は、コロンを省略
+        if node.key.class.name.end_with?("SymbolNode")
+          @result << node.key.value
+          @result << ":"
+        else
+          visit(node.key)
+          @result << ":"
+        end
         visit(node.value)
       end
 
