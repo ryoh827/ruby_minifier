@@ -20,18 +20,22 @@ module RubyMinifier
       end
 
       def visit(node)
+        puts "Visiting node: #{node.class}"
         super
         @result.join.force_encoding("UTF-8")
       end
 
       def visit_program_node(node)
+        puts "Visiting program node"
         visit(node.statements)
       end
 
       def visit_statements_node(node)
+        puts "Visiting statements node"
         puts "StatementsNode start: #{@result.join}"
         last_index = node.body.length - 1
         node.body.each_with_index do |stmt, i|
+          puts "Statement #{i}: #{stmt.class}"
           visit(stmt)
           # 最後の文でない場合、かつ制御構造でない場合、かつParenthesesNodeの中でない場合はセミコロンを挿入
           unless i == last_index || is_control_structure?(stmt) || @current_parent.class.name.end_with?("ParenthesesNode")
@@ -103,8 +107,8 @@ module RubyMinifier
       end
 
       def visit_call_node(node)
+        puts "CallNode: #{node.name}, Receiver: #{node.receiver&.class}"
         if node.receiver
-          puts "CallNode receiver: #{node.receiver.class}"
           # 配列アクセスの場合は特別な処理
           if node.name.to_s == "[]"
             visit(node.receiver)
@@ -128,6 +132,7 @@ module RubyMinifier
               @result << ")" if receiver_needs_parens
             end
 
+            # 演算子の処理
             @result << node.name.to_s
 
             # 引数の処理
@@ -150,7 +155,8 @@ module RubyMinifier
             @result << node.name
           end
         else
-          @result << node.name
+          # 変数の場合は単純に名前を出力
+          @result << node.name.to_s
         end
 
         if node.arguments && !node.arguments.arguments.empty? && !OPERATORS.include?(node.name.to_s)
@@ -357,10 +363,73 @@ module RubyMinifier
         @result << "\""
       end
 
+      def visit_and_node(node)
+        puts "AndNode: #{node.class}"
+        # 左辺の処理
+        if node.left.class.name.end_with?("ParenthesesNode")
+          visit(node.left)
+        else
+          left_needs_parens = needs_parens?(node.left, node)
+          @result << "(" if left_needs_parens
+          visit(node.left)
+          @result << ")" if left_needs_parens
+        end
+
+        @result << "&&"
+
+        # 右辺の処理
+        if node.right.class.name.end_with?("ParenthesesNode")
+          visit(node.right)
+        else
+          right_needs_parens = needs_parens?(node.right, node)
+          @result << "(" if right_needs_parens
+          visit(node.right)
+          @result << ")" if right_needs_parens
+        end
+      end
+
+      def visit_or_node(node)
+        puts "OrNode: #{node.class}"
+        # 左辺の処理
+        if node.left.class.name.end_with?("ParenthesesNode")
+          visit(node.left)
+        else
+          left_needs_parens = needs_parens?(node.left, node)
+          @result << "(" if left_needs_parens
+          visit(node.left)
+          @result << ")" if left_needs_parens
+        end
+
+        @result << "||"
+
+        # 右辺の処理
+        if node.right.class.name.end_with?("ParenthesesNode")
+          visit(node.right)
+        else
+          right_needs_parens = needs_parens?(node.right, node)
+          @result << "(" if right_needs_parens
+          visit(node.right)
+          @result << ")" if right_needs_parens
+        end
+      end
+
       private
 
       def needs_parens?(node, parent = nil)
         return false unless parent
+
+        # AndNodeとOrNodeの場合の処理
+        if parent.class.name.end_with?("AndNode") || parent.class.name.end_with?("OrNode")
+          if node.class.name.end_with?("AndNode") || node.class.name.end_with?("OrNode")
+            # 同じ演算子の場合は括弧不要
+            return false if (parent.class.name.end_with?("AndNode") && node.class.name.end_with?("AndNode")) ||
+                          (parent.class.name.end_with?("OrNode") && node.class.name.end_with?("OrNode"))
+            # 異なる演算子の場合は優先順位を確認
+            parent_precedence = parent.class.name.end_with?("AndNode") ? 8 : 7
+            node_precedence = node.class.name.end_with?("AndNode") ? 8 : 7
+            return node_precedence <= parent_precedence
+          end
+        end
 
         # 演算子の優先順位を確認
         if parent.respond_to?(:operator)
