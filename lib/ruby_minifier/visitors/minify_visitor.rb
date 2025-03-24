@@ -29,14 +29,16 @@ module RubyMinifier
       end
 
       def visit_statements_node(node)
+        puts "StatementsNode start: #{@result.join}"
         last_index = node.body.length - 1
         node.body.each_with_index do |stmt, i|
           visit(stmt)
-          # 最後の文でない場合、かつ制御構造でない場合はセミコロンを挿入
-          unless i == last_index || is_control_structure?(stmt)
+          # 最後の文でない場合、かつ制御構造でない場合、かつParenthesesNodeの中でない場合はセミコロンを挿入
+          unless i == last_index || is_control_structure?(stmt) || @current_parent.class.name.end_with?("ParenthesesNode")
             @result << ";"
           end
         end
+        puts "StatementsNode end: #{@result.join}"
       end
 
       def visit_def_node(node)
@@ -102,13 +104,10 @@ module RubyMinifier
 
       def visit_call_node(node)
         if node.receiver
-          receiver_needs_parens = needs_parens?(node.receiver, node)
-          @result << "(" if receiver_needs_parens
-          visit(node.receiver)
-          @result << ")" if receiver_needs_parens
-
-          method_name = node.name.to_s
-          if method_name == "[]"
+          puts "CallNode receiver: #{node.receiver.class}"
+          # 配列アクセスの場合は特別な処理
+          if node.name.to_s == "[]"
+            visit(node.receiver)
             @result << "["
             visit(node.arguments) if node.arguments
             @result << "]"
@@ -116,28 +115,52 @@ module RubyMinifier
           end
 
           # 演算子メソッドの場合は特別な処理
-          if OPERATORS.include?(method_name)
-            @result << method_name
+          if OPERATORS.include?(node.name.to_s)
+            puts "Operator method: #{node.name}"
+            # 受け手の処理
+            if node.receiver.class.name.end_with?("ParenthesesNode")
+              puts "Receiver is ParenthesesNode"
+              visit(node.receiver)
+            else
+              receiver_needs_parens = needs_parens?(node.receiver, node)
+              @result << "(" if receiver_needs_parens
+              visit(node.receiver)
+              @result << ")" if receiver_needs_parens
+            end
+
+            @result << node.name.to_s
+
+            # 引数の処理
+            if node.arguments && !node.arguments.arguments.empty?
+              arg = node.arguments.arguments.first
+              puts "Argument: #{arg.class}"
+              if arg.class.name.end_with?("ParenthesesNode")
+                puts "Argument is ParenthesesNode"
+                visit(arg)
+              else
+                arg_needs_parens = needs_parens?(arg, node)
+                @result << "(" if arg_needs_parens
+                visit(arg)
+                @result << ")" if arg_needs_parens
+              end
+            end
           else
+            visit(node.receiver)
             @result << "."
-            @result << method_name
+            @result << node.name
           end
         else
           @result << node.name
         end
 
-        if node.arguments && !node.arguments.arguments.empty?
-          needs_parens = if OPERATORS.include?(node.name.to_s)
-            false
-          else
-            !%w[puts print p].include?(node.name.to_s)
-          end
+        if node.arguments && !node.arguments.arguments.empty? && !OPERATORS.include?(node.name.to_s)
+          needs_parens = !%w[puts print p].include?(node.name.to_s)
           if needs_parens
             @result << "("
             visit(node.arguments)
             @result << ")"
           else
-            @result << " " unless OPERATORS.include?(node.name.to_s)
+            @result << " "
             visit(node.arguments)
           end
         end
@@ -255,6 +278,14 @@ module RubyMinifier
         @result << "]"
       end
 
+      def visit_parentheses_node(node)
+        puts "ParenthesesNode start: #{@result.join}"
+        @result << "("
+        visit(node.body)
+        @result << ")"
+        puts "ParenthesesNode end: #{@result.join}"
+      end
+
       def visit_hash_node(node)
         @result << "{"
         node.elements.each_with_index do |elem, i|
@@ -330,8 +361,8 @@ module RubyMinifier
 
       def needs_parens?(node, parent = nil)
         return false unless parent
-        return false unless node.respond_to?(:operator) || node.class.name.end_with?("CallNode")
 
+        # 演算子の優先順位を確認
         if parent.respond_to?(:operator)
           # CallNodeの場合は特別な処理
           if node.class.name.end_with?("CallNode")
@@ -358,6 +389,9 @@ module RubyMinifier
             end
           end
         end
+
+        # ParenthesesNodeの場合は常に括弧を保持
+        return true if node.class.name.end_with?("ParenthesesNode")
 
         false
       end
