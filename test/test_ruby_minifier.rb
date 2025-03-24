@@ -77,6 +77,18 @@ class TestRubyMinifier < Minitest::Test
     assert_equal expected, @minifier.minify(code)
   end
 
+  def test_constant_definition
+    code = <<~RUBY
+      CONST = "example"
+      class Example2
+        OTHER_CONST = "other"
+      end
+    RUBY
+
+    expected = "CONST=\"example\";class Example2;OTHER_CONST=\"other\";end"
+    assert_equal expected, @minifier.minify(code)
+  end
+
   def test_token_structure
     code = "puts 'hello'"
     result = Prism.lex(code)
