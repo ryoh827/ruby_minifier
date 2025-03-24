@@ -20,29 +20,22 @@ module RubyMinifier
       end
 
       def visit(node)
-        puts "Visiting node: #{node.class}"
         super
         @result.join.force_encoding("UTF-8")
       end
 
       def visit_program_node(node)
-        puts "Visiting program node"
         visit(node.statements)
       end
 
       def visit_statements_node(node)
-        puts "Visiting statements node"
-        puts "StatementsNode start: #{@result.join}"
         last_index = node.body.length - 1
         node.body.each_with_index do |stmt, i|
-          puts "Statement #{i}: #{stmt.class}"
           visit(stmt)
-          # 最後の文でない場合、かつ制御構造でない場合、かつParenthesesNodeの中でない場合はセミコロンを挿入
           unless i == last_index || is_control_structure?(stmt) || @current_parent.class.name.end_with?("ParenthesesNode")
             @result << ";"
           end
         end
-        puts "StatementsNode end: #{@result.join}"
       end
 
       def visit_def_node(node)
@@ -107,9 +100,7 @@ module RubyMinifier
       end
 
       def visit_call_node(node)
-        puts "CallNode: #{node.name}, Receiver: #{node.receiver&.class}"
         if node.receiver
-          # 配列アクセスの場合は特別な処理
           if node.name.to_s == "[]"
             visit(node.receiver)
             @result << "["
@@ -118,12 +109,8 @@ module RubyMinifier
             return
           end
 
-          # 演算子メソッドの場合は特別な処理
           if OPERATORS.include?(node.name.to_s)
-            puts "Operator method: #{node.name}"
-            # 受け手の処理
             if node.receiver.class.name.end_with?("ParenthesesNode")
-              puts "Receiver is ParenthesesNode"
               visit(node.receiver)
             else
               receiver_needs_parens = needs_parens?(node.receiver, node)
@@ -132,15 +119,11 @@ module RubyMinifier
               @result << ")" if receiver_needs_parens
             end
 
-            # 演算子の処理
             @result << node.name.to_s
 
-            # 引数の処理
             if node.arguments && !node.arguments.arguments.empty?
               arg = node.arguments.arguments.first
-              puts "Argument: #{arg.class}"
               if arg.class.name.end_with?("ParenthesesNode")
-                puts "Argument is ParenthesesNode"
                 visit(arg)
               else
                 arg_needs_parens = needs_parens?(arg, node)
@@ -155,7 +138,6 @@ module RubyMinifier
             @result << node.name
           end
         else
-          # 変数の場合は単純に名前を出力
           @result << node.name.to_s
         end
 
@@ -166,7 +148,6 @@ module RubyMinifier
             visit(node.arguments)
             @result << ")"
           else
-            # 文字列リテラル以外の場合はスペースを追加
             first_arg = node.arguments.arguments.first
             if !first_arg.class.name.end_with?("StringNode") && !first_arg.class.name.end_with?("InterpolatedStringNode")
               @result << " "
@@ -191,8 +172,6 @@ module RubyMinifier
         if node.requireds
           node.requireds.each_with_index do |param, i|
             visit(param)
-            # 必須パラメータの最後のパラメータの後にはカンマを追加しない
-            # ただし、オプショナルパラメータが存在する場合は追加
             @result << "," unless i == node.requireds.length - 1 || node.optionals.nil?
           end
         end
@@ -237,7 +216,9 @@ module RubyMinifier
           visit(node.parameters)
           @result << "|"
         end
-        @result << ";"
+        if node.body && node.body.body && !node.body.body.empty?
+          @result << ";"
+        end
         visit(node.body) if node.body
         @result << ";end"
       end
@@ -264,8 +245,6 @@ module RubyMinifier
       end
 
       def visit_binary_node(node)
-        puts "Binary Node Class: #{node.class}"
-        puts "Parent Node Class: #{@current_parent.class}" if @current_parent
         if needs_parens?(node, @current_parent)
           @result << "("
           with_parent(node) do
@@ -284,7 +263,6 @@ module RubyMinifier
       end
 
       def visit_if_node(node)
-        # 単一の文で、else節がない場合は後置if文を使用
         if !node.consequent && node.statements && node.statements.body.length == 1
           visit(node.statements)
           @result << " if "
@@ -312,11 +290,9 @@ module RubyMinifier
       end
 
       def visit_parentheses_node(node)
-        puts "ParenthesesNode start: #{@result.join}"
         @result << "("
         visit(node.body)
         @result << ")"
-        puts "ParenthesesNode end: #{@result.join}"
       end
 
       def visit_hash_node(node)
@@ -329,7 +305,6 @@ module RubyMinifier
       end
 
       def visit_assoc_node(node)
-        # キーがシンボルの場合は、コロンを省略
         if node.key.class.name.end_with?("SymbolNode")
           @result << node.key.value
           @result << ":"
@@ -397,8 +372,6 @@ module RubyMinifier
       end
 
       def visit_and_node(node)
-        puts "AndNode: #{node.class}"
-        # 左辺の処理
         if node.left.class.name.end_with?("ParenthesesNode")
           visit(node.left)
         else
@@ -410,7 +383,6 @@ module RubyMinifier
 
         @result << "&&"
 
-        # 右辺の処理
         if node.right.class.name.end_with?("ParenthesesNode")
           visit(node.right)
         else
@@ -422,8 +394,6 @@ module RubyMinifier
       end
 
       def visit_or_node(node)
-        puts "OrNode: #{node.class}"
-        # 左辺の処理
         if node.left.class.name.end_with?("ParenthesesNode")
           visit(node.left)
         else
@@ -435,7 +405,6 @@ module RubyMinifier
 
         @result << "||"
 
-        # 右辺の処理
         if node.right.class.name.end_with?("ParenthesesNode")
           visit(node.right)
         else
@@ -451,48 +420,37 @@ module RubyMinifier
       def needs_parens?(node, parent = nil)
         return false unless parent
 
-        # AndNodeとOrNodeの場合の処理
         if parent.class.name.end_with?("AndNode") || parent.class.name.end_with?("OrNode")
           if node.class.name.end_with?("AndNode") || node.class.name.end_with?("OrNode")
-            # 同じ演算子の場合は括弧不要
             return false if (parent.class.name.end_with?("AndNode") && node.class.name.end_with?("AndNode")) ||
                           (parent.class.name.end_with?("OrNode") && node.class.name.end_with?("OrNode"))
-            # 異なる演算子の場合は優先順位を確認
             parent_precedence = parent.class.name.end_with?("AndNode") ? 8 : 7
             node_precedence = node.class.name.end_with?("AndNode") ? 8 : 7
             return node_precedence <= parent_precedence
           end
         end
 
-        # 演算子の優先順位を確認
         if parent.respond_to?(:operator)
-          # CallNodeの場合は特別な処理
           if node.class.name.end_with?("CallNode")
             return true if NEEDS_PARENS.include?(parent.operator)
             return false
           end
 
-          # BinaryNodeの場合の処理
           if node.respond_to?(:operator)
-            # 同じ演算子の場合は結合的な演算子のみ括弧を省略
             return false if node.operator == parent.operator && %w[+ * && ||].include?(parent.operator)
             
-            # 必ず括弧が必要な演算子の場合
             return true if NEEDS_PARENS.include?(node.operator)
             
             node_precedence = OPERATOR_PRECEDENCE[node.operator] || 0
             parent_precedence = OPERATOR_PRECEDENCE[parent.operator] || 0
 
-            # 優先順位が同じか低い場合は括弧が必要
             if node_precedence <= parent_precedence
-              # 右結合演算子（**）の場合は特別処理
               return false if node.operator == "**" && parent.operator == "**" && parent.right == node
               return true
             end
           end
         end
 
-        # ParenthesesNodeの場合は常に括弧を保持
         return true if node.class.name.end_with?("ParenthesesNode")
 
         false

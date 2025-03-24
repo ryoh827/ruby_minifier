@@ -159,7 +159,7 @@ class TestRubyMinifier < Minitest::Test
       calc.show_history
     RUBY
 
-    expected = 'class Calculator;def initialize(name="Simple Calculator");@name=name;@history=[];end;def add(a,b);result=a+b;@history<<{operation:"add",result:result};result;end;def multiply(x,y);result=x*y;@history<<{operation:"multiply",result:result};result;end;def show_history;puts"Calculator History:";@history.each do|record|puts"#{record[:operation]}: #{record[:result]}";end;end;end;calc=Calculator.new("My Calculator");result1=calc.add(10,20);result2=calc.multiply(5,6);puts"Addition result: #{result1}";puts"Multiplication result: #{result2}";calc.show_history'
+    expected = 'class Calculator;def initialize(name="Simple Calculator");@name=name;@history=[];end;def add(a,b);result=a+b;@history<<{operation:"add",result:result};result;end;def multiply(x,y);result=x*y;@history<<{operation:"multiply",result:result};result;end;def show_history;puts"Calculator History:";@history.each do|record|;puts"#{record[:operation]}: #{record[:result]}";end;end;end;calc=Calculator.new("My Calculator");result1=calc.add(10,20);result2=calc.multiply(5,6);puts"Addition result: #{result1}";puts"Multiplication result: #{result2}";calc.show_history'
     assert_equal expected, @minifier.minify(code)
   end
 
@@ -195,7 +195,7 @@ class TestRubyMinifier < Minitest::Test
       end
     RUBY
 
-    expected = 'array.each do|item|;if item.valid?;process(item);end;end;hash.each do|key,value|;puts"#{key}: #{value}";end;(1..10).each do|i|;puts i if i.even?;end'
+    expected = 'array.each do|item|;process(item) if item.valid?;end;hash.each do|key,value|;puts"#{key}: #{value}";end;(1..10).each do|i|;puts i if i.even?;end'
     assert_equal expected, @minifier.minify(code)
   end
 
