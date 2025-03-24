@@ -269,10 +269,9 @@ class TestRubyMinifier < Minitest::Test
     RUBY
 
     result = Prism.parse(code)
-    p result.value.statements.class
-    p result.value.statements.body.class if result.value.statements.respond_to?(:body)
-    p result.value.statements.statements.class if result.value.statements.respond_to?(:statements)
-    assert true
+    assert result.value.statements.is_a?(Prism::StatementsNode)
+    assert result.value.statements.body.is_a?(Array) if result.value.statements.respond_to?(:body)
+    assert result.value.statements.statements.is_a?(Array) if result.value.statements.respond_to?(:statements)
   end
 
   private
