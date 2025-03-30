@@ -16,9 +16,9 @@ jobs:
         ruby-version: ['3.4', '3.3', '3.2']
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@b39b52d1213e96004bfcb1c388a6c24233e3b0a8 # v3
     - name: Set up Ruby ${{ matrix.ruby-version }}
-      uses: ruby/setup-ruby@v1
+      uses: ruby/setup-ruby@b39b52d1213e96004bfcb1c388a6c24233e3b0a8 # v1
       with:
         ruby-version: ${{ matrix.ruby-version }}
         bundler-cache: true
