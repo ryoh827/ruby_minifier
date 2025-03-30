@@ -82,15 +82,16 @@ module RubyMinifier
       end
 
       def visit_string_node(node)
-        if node.content.include?("\#{")
-          @result << "\""
-          @result << node.content.gsub('"', '\\"')
-          @result << "\""
-        else
-          @result << "\""
-          @result << node.content.gsub('"', '\\"')
-          @result << "\""
-        end
+        @result << "\""
+        content = node.content
+        # 既存のエスケープシーケンスを保持しながら、エスケープされていないダブルクォートをエスケープ
+        content = content.gsub(/(?<!\\)"/, '\\"')
+        # 既存のエスケープシーケンスを保持しながら、エスケープされていないバックスラッシュをエスケープ
+        content = content.gsub(/(?<!\\)\\(?!\\)/, '\\\\')
+        # 文字列補間のエスケープ
+        content = content.gsub('#{', '\#{')
+        @result << content
+        @result << "\""
       end
 
       def visit_integer_node(node)
