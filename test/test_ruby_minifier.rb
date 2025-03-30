@@ -286,6 +286,45 @@ class TestRubyMinifier < Minitest::Test
     end
   end
 
+  def test_self_minification
+    code = File.read(File.expand_path("../../lib/ruby_minifier/visitors/minify_visitor.rb", __FILE__))
+    result = @minifier.minify(code)
+    assert_kind_of String, result
+    assert result.length > 0
+    assert result.include?("class MinifyVisitor")
+  end
+
+  def test_complex_string_escaping
+    code = <<~RUBY
+      puts "Hello \\"World\\""
+      puts "Path: \\\\usr\\\\local"
+      puts "Line break: \\n\\n"
+    RUBY
+
+    expected = %{puts"Hello \\"World\\"";puts"Path: \\\\usr\\\\local";puts"Line break: \\n\\n"}
+    assert_equal expected, @minifier.minify(code)
+  end
+
+  def test_nested_blocks_and_parentheses
+    code = <<~RUBY
+      def method1
+        (1..10).each do |num|
+          if num > 5
+            puts "Greater than 5: \#{num}"
+          end
+        end
+      end
+
+      def method2(x)
+        result = (x + 1) * (x - 1)
+        puts "Result: \#{result}"
+      end
+    RUBY
+
+    expected = %{def method1;(1..10).each do|num|;puts"Greater than 5: \#{num}" if num>5;end;end;def method2(x);result=(x+1)*(x-1);puts"Result: \#{result}";end}
+    assert_equal expected, @minifier.minify(code)
+  end
+
   private
 
   def capture_output
