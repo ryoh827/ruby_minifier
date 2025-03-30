@@ -76,6 +76,12 @@ module RubyMinifier
         @result << node.name
       end
 
+      def visit_constant_write_node(node)
+        @result << node.name
+        @result << "="
+        visit(node.value)
+      end
+
       def visit_string_node(node)
         if node.content.include?("\#{")
           @result << "\""
