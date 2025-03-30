@@ -286,20 +286,6 @@ class TestRubyMinifier < Minitest::Test
     end
   end
 
-  def test_debug_node_structure
-    code = <<~RUBY
-      def hello
-        puts "Hello, World!"
-      end
-    RUBY
-
-    result = Prism.parse(code)
-    p result.value.statements.class
-    p result.value.statements.body.class if result.value.statements.respond_to?(:body)
-    p result.value.statements.statements.class if result.value.statements.respond_to?(:statements)
-    assert true
-  end
-
   private
 
   def capture_output
