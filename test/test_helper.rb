@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
-$LOAD_PATH.unshift File.expand_path("../lib", __dir__)
-require "ruby_minifier"
+require 'bundler/setup'
+require 'minitest/autorun'
+require 'minitest/pride'
+require 'stringio'
 
-require "minitest/autorun"
+$LOAD_PATH.unshift File.expand_path('../../lib', __FILE__)
