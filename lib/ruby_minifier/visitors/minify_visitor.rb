@@ -32,8 +32,7 @@ module RubyMinifier
         last_index = node.body.length - 1
         node.body.each_with_index do |stmt, i|
           visit(stmt)
-          # 最後の文でない場合、かつ制御構造でない場合はセミコロンを挿入
-          unless i == last_index || is_control_structure?(stmt)
+          unless i == last_index || is_control_structure?(stmt) || @current_parent.class.name.end_with?("ParenthesesNode")
             @result << ";"
           end
         end
@@ -42,7 +41,7 @@ module RubyMinifier
       def visit_def_node(node)
         @result << "def "
         @result << node.name
-        if node.parameters && !node.parameters.requireds.empty?
+        if node.parameters
           @result << "("
           visit(node.parameters)
           @result << ")"
@@ -116,42 +115,57 @@ module RubyMinifier
 
       def visit_call_node(node)
         if node.receiver
-          receiver_needs_parens = needs_parens?(node.receiver, node)
-          @result << "(" if receiver_needs_parens
-          visit(node.receiver)
-          @result << ")" if receiver_needs_parens
-
-          method_name = node.name.to_s
-          if method_name == "[]"
+          if node.name.to_s == "[]"
+            visit(node.receiver)
             @result << "["
             visit(node.arguments) if node.arguments
             @result << "]"
             return
           end
 
-          # 演算子メソッドの場合は特別な処理
-          if OPERATORS.include?(method_name)
-            @result << method_name
+          if OPERATORS.include?(node.name.to_s)
+            if node.receiver.class.name.end_with?("ParenthesesNode")
+              visit(node.receiver)
+            else
+              receiver_needs_parens = needs_parens?(node.receiver, node)
+              @result << "(" if receiver_needs_parens
+              visit(node.receiver)
+              @result << ")" if receiver_needs_parens
+            end
+
+            @result << node.name.to_s
+
+            if node.arguments && !node.arguments.arguments.empty?
+              arg = node.arguments.arguments.first
+              if arg.class.name.end_with?("ParenthesesNode")
+                visit(arg)
+              else
+                arg_needs_parens = needs_parens?(arg, node)
+                @result << "(" if arg_needs_parens
+                visit(arg)
+                @result << ")" if arg_needs_parens
+              end
+            end
           else
+            visit(node.receiver)
             @result << "."
-            @result << method_name
+            @result << node.name
           end
         else
-          @result << node.name
+          @result << node.name.to_s
         end
 
-        if node.arguments && !node.arguments.arguments.empty?
-          needs_parens = if OPERATORS.include?(node.name.to_s)
-            false
-          else
-            !%w[puts print p].include?(node.name.to_s)
-          end
+        if node.arguments && !node.arguments.arguments.empty? && !OPERATORS.include?(node.name.to_s)
+          needs_parens = !%w[puts print p].include?(node.name.to_s)
           if needs_parens
             @result << "("
             visit(node.arguments)
             @result << ")"
           else
-            @result << " " unless OPERATORS.include?(node.name.to_s)
+            first_arg = node.arguments.arguments.first
+            if !first_arg.class.name.end_with?("StringNode") && !first_arg.class.name.end_with?("InterpolatedStringNode")
+              @result << " "
+            end
             visit(node.arguments)
           end
         end
@@ -169,10 +183,24 @@ module RubyMinifier
       end
 
       def visit_parameters_node(node)
-        node.requireds.each_with_index do |param, i|
-          visit(param)
-          @result << "," unless i == node.requireds.length - 1
+        if node.requireds
+          node.requireds.each_with_index do |param, i|
+            visit(param)
+            @result << "," unless i == node.requireds.length - 1 || node.optionals.nil?
+          end
         end
+        if node.optionals
+          node.optionals.each_with_index do |param, i|
+            visit(param)
+            @result << "," unless i == node.optionals.length - 1
+          end
+        end
+      end
+
+      def visit_optional_parameter_node(node)
+        @result << node.name
+        @result << "="
+        visit(node.value)
       end
 
       def visit_local_variable_read_node(node)
@@ -202,7 +230,9 @@ module RubyMinifier
           visit(node.parameters)
           @result << "|"
         end
-        @result << ";"
+        if node.body && node.body.body && !node.body.body.empty?
+          @result << ";"
+        end
         visit(node.body) if node.body
         @result << ";end"
       end
@@ -229,8 +259,6 @@ module RubyMinifier
       end
 
       def visit_binary_node(node)
-        puts "Binary Node Class: #{node.class}"
-        puts "Parent Node Class: #{@current_parent.class}" if @current_parent
         if needs_parens?(node, @current_parent)
           @result << "("
           with_parent(node) do
@@ -249,15 +277,21 @@ module RubyMinifier
       end
 
       def visit_if_node(node)
-        @result << "if "
-        visit(node.predicate)
-        @result << ";"
-        visit(node.statements)
-        if node.consequent
-          @result << ";else;"
-          visit(node.consequent)
+        if !node.consequent && node.statements && node.statements.body.length == 1
+          visit(node.statements)
+          @result << " if "
+          visit(node.predicate)
+        else
+          @result << "if "
+          visit(node.predicate)
+          @result << ";"
+          visit(node.statements) if node.statements
+          if node.consequent
+            @result << ";else;"
+            visit(node.consequent)
+          end
+          @result << ";end"
         end
-        @result << ";end"
       end
 
       def visit_array_node(node)
@@ -267,6 +301,12 @@ module RubyMinifier
           @result << "," unless i == node.elements.length - 1
         end
         @result << "]"
+      end
+
+      def visit_parentheses_node(node)
+        @result << "("
+        visit(node.body)
+        @result << ")"
       end
 
       def visit_hash_node(node)
@@ -279,8 +319,13 @@ module RubyMinifier
       end
 
       def visit_assoc_node(node)
-        visit(node.key)
-        @result << ":"
+        if node.key.class.name.end_with?("SymbolNode")
+          @result << node.key.value
+          @result << ":"
+        else
+          visit(node.key)
+          @result << ":"
+        end
         visit(node.value)
       end
 
@@ -340,38 +385,87 @@ module RubyMinifier
         @result << "\""
       end
 
+      def visit_and_node(node)
+        if node.left.class.name.end_with?("ParenthesesNode")
+          visit(node.left)
+        else
+          left_needs_parens = needs_parens?(node.left, node)
+          @result << "(" if left_needs_parens
+          visit(node.left)
+          @result << ")" if left_needs_parens
+        end
+
+        @result << "&&"
+
+        if node.right.class.name.end_with?("ParenthesesNode")
+          visit(node.right)
+        else
+          right_needs_parens = needs_parens?(node.right, node)
+          @result << "(" if right_needs_parens
+          visit(node.right)
+          @result << ")" if right_needs_parens
+        end
+      end
+
+      def visit_or_node(node)
+        if node.left.class.name.end_with?("ParenthesesNode")
+          visit(node.left)
+        else
+          left_needs_parens = needs_parens?(node.left, node)
+          @result << "(" if left_needs_parens
+          visit(node.left)
+          @result << ")" if left_needs_parens
+        end
+
+        @result << "||"
+
+        if node.right.class.name.end_with?("ParenthesesNode")
+          visit(node.right)
+        else
+          right_needs_parens = needs_parens?(node.right, node)
+          @result << "(" if right_needs_parens
+          visit(node.right)
+          @result << ")" if right_needs_parens
+        end
+      end
+
       private
 
       def needs_parens?(node, parent = nil)
         return false unless parent
-        return false unless node.respond_to?(:operator) || node.class.name.end_with?("CallNode")
+
+        if parent.class.name.end_with?("AndNode") || parent.class.name.end_with?("OrNode")
+          if node.class.name.end_with?("AndNode") || node.class.name.end_with?("OrNode")
+            return false if (parent.class.name.end_with?("AndNode") && node.class.name.end_with?("AndNode")) ||
+                          (parent.class.name.end_with?("OrNode") && node.class.name.end_with?("OrNode"))
+            parent_precedence = parent.class.name.end_with?("AndNode") ? 8 : 7
+            node_precedence = node.class.name.end_with?("AndNode") ? 8 : 7
+            return node_precedence <= parent_precedence
+          end
+        end
 
         if parent.respond_to?(:operator)
-          # CallNodeの場合は特別な処理
           if node.class.name.end_with?("CallNode")
             return true if NEEDS_PARENS.include?(parent.operator)
             return false
           end
 
-          # BinaryNodeの場合の処理
           if node.respond_to?(:operator)
-            # 同じ演算子の場合は結合的な演算子のみ括弧を省略
             return false if node.operator == parent.operator && %w[+ * && ||].include?(parent.operator)
             
-            # 必ず括弧が必要な演算子の場合
             return true if NEEDS_PARENS.include?(node.operator)
             
             node_precedence = OPERATOR_PRECEDENCE[node.operator] || 0
             parent_precedence = OPERATOR_PRECEDENCE[parent.operator] || 0
 
-            # 優先順位が同じか低い場合は括弧が必要
             if node_precedence <= parent_precedence
-              # 右結合演算子（**）の場合は特別処理
               return false if node.operator == "**" && parent.operator == "**" && parent.right == node
               return true
             end
           end
         end
+
+        return true if node.class.name.end_with?("ParenthesesNode")
 
         false
       end
