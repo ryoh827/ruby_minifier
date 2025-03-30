@@ -52,6 +52,14 @@ module RubyMinifier
         @result << ";end"
       end
 
+      def visit_module_node(node)
+        @result << "module "
+        visit(node.constant_path)
+        @result << ";"
+        visit(node.body) if node.body
+        @result << ";end"
+      end
+
       def visit_class_node(node)
         @result << "class "
         visit(node.constant_path)
