@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "project": {
+    "name": "ruby_minifier",
+    "description": "A safe and lightweight Ruby code minifier using Prism AST, preserving syntax while removing unnecessary spaces.",
+    "ruby_version": ">= 3.1.0",
+    "dependencies": {
+      "prism": ">= 0.24, < 1.5",
+      "standard": "~> 1.49"
+    }
+  },
+  "development_guidelines": {
+    "code_style": {
+      "formatter": "standard",
+      "documentation": "YARD形式のコメントを使用",
+      "naming": {
+        "methods": "snake_case",
+        "classes": "CamelCase",
+        "constants": "SCREAMING_SNAKE_CASE"
+      }
+    },
+    "testing": {
+      "framework": "minitest",
+      "coverage": "90%以上を維持",
+      "test_files": "test/test_*.rb形式"
+    },
+    "minification_rules": {
+      "preserve_syntax": true,
+      "configurable_options": [
+        "space_after_operators",
+        "add_semicolons",
+        "remove_comments",
+        "remove_empty_lines"
+      ]
+    },
+    "error_handling": {
+      "parse_errors": "詳細なエラーメッセージを提供",
+      "validation": "厳格なバリデーション"
+    }
+  },
+  "ai_assistant_guidelines": {
+    "code_generation": {
+      "style": "簡潔で読みやすいコードを生成",
+      "documentation": "公開メソッドには必ずYARDコメントを付ける",
+      "testing": "新しい機能には必ずテストを書く"
+    },
+    "refactoring": {
+      "approach": "段階的な改善を提案",
+      "safety": "既存の機能を壊さないことを確認",
+      "documentation": "変更理由を明確に説明"
+    },
+    "error_handling": {
+      "approach": "ユーザーフレンドリーなエラーメッセージを提案",
+      "debugging": "問題の原因を特定し、解決策を提案"
+    },
+    "communication": {
+      "language": "日本語でコミュニケーション",
+      "clarity": "技術的な説明は分かりやすく",
+      "suggestions": "代替案や改善案を積極的に提案"
+    }
+  }
+}

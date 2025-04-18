@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "rules": {
+    "code_style": {
+      "ruby": {
+        "formatter": "standard",
+        "indent_size": 2,
+        "line_length": 120
+      },
+      "naming": {
+        "methods": "snake_case",
+        "classes": "CamelCase",
+        "constants": "SCREAMING_SNAKE_CASE"
+      }
+    },
+    "documentation": {
+      "public_methods": {
+        "require_doc": true,
+        "format": "yard"
+      },
+      "changelog": {
+        "update_on_release": true
+      }
+    },
+    "testing": {
+      "coverage_threshold": 90,
+      "test_directory": "test",
+      "test_file_pattern": "test_*.rb",
+      "require_tests_before_implementation": true
+    },
+    "version_control": {
+      "branch_naming": {
+        "feature": "feat/*",
+        "bugfix": "fix/*",
+        "hotfix": "hotfix/*"
+      },
+      "commit_messages": {
+        "format": "conventional_commits",
+        "types": [
+          "feat",
+          "fix",
+          "docs",
+          "test",
+          "refactor",
+          "chore"
+        ]
+      }
+    },
+    "dependencies": {
+      "ruby_version": ">= 3.1.0",
+      "prism_version": ">= 0.24, < 1.5"
+    },
+    "minification": {
+      "preserve_syntax": true,
+      "configurable_options": [
+        "space_after_operators",
+        "add_semicolons",
+        "remove_comments",
+        "remove_empty_lines"
+      ]
+    },
+    "error_handling": {
+      "parse_errors": "detailed_messages",
+      "validation": "strict"
+    }
+  }
+}

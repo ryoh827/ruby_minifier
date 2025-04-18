@@ -1,0 +1,151 @@
+# Ruby Minifier コーディング規約
+
+## 1. コードスタイル
+
+### 1.1 基本ルール
+- standard gemを使用したコードフォーマット
+- インデントは2スペース
+- 行の長さは120文字以内
+- メソッド名はスネークケース
+- クラス名はキャメルケース
+- 定数名は大文字のスネークケース
+- モジュール名はキャメルケース
+
+### 1.2 ドキュメント
+```ruby
+# 良い例
+# @param [Prism::Node] node 処理するASTノード
+# @return [String] 最小化されたコード
+def visit_string_node(node)
+  @result << "\""
+  @result << node.content
+  @result << "\""
+end
+
+# 悪い例
+def visit_string_node(node) # 文字列ノードを処理
+  @result << "\""
+  @result << node.content
+  @result << "\""
+end
+```
+
+## 2. テスト
+
+### 2.1 基本ルール
+- minitestを使用
+- テストカバレッジ90%以上を維持
+- テストファイル名は`test_*.rb`形式
+- テストケース名は`test_*`形式
+- テストデータは`<<~RUBY`ヒアドキュメントを使用
+
+### 2.2 テストの書き方
+```ruby
+# 良い例
+def test_string_interpolation
+  code = <<~RUBY
+    name = "John"
+    puts "Hello, \#{name}!"
+  RUBY
+
+  expected = 'name="John";puts"Hello, #{name}!"'
+  assert_equal expected, @minifier.minify(code)
+end
+
+# 悪い例
+def test_string
+  assert_equal 'puts"hello"', @minifier.minify("puts 'hello'")
+end
+```
+
+## 3. Minificationルール
+
+### 3.1 基本ルール
+- Prism ASTを使用した構文解析
+- 演算子の優先順位を考慮
+- 不要な空白を削除
+- セミコロンを適切に追加
+- コメントは削除
+- 空行は削除
+- 文字列補間は保持
+
+### 3.2 演算子の優先順位
+```ruby
+OPERATOR_PRECEDENCE = {
+  "**" => 16,
+  "*" => 15, "/" => 15, "%" => 15,
+  "+" => 14, "-" => 14,
+  "==" => 9, "!=" => 9, ">" => 9, "<" => 9, ">=" => 9, "<=" => 9,
+  "&&" => 8,
+  "||" => 7
+}.freeze
+```
+
+## 4. エラーハンドリング
+
+### 4.1 基本ルール
+- Prismのパースエラーを適切に処理
+- ユーザーフレンドリーなエラーメッセージ
+- スタックトレースは開発時のみ表示
+
+### 4.2 エラーの例
+```ruby
+# 良い例
+result = Prism.parse(source)
+if result.failure?
+  raise ParseError, "Failed to parse Ruby code"
+end
+
+# 悪い例
+result = Prism.parse(source)
+raise ParseError if result.failure?
+```
+
+## 5. リファクタリング
+
+### 5.1 基本ルール
+- 段階的な改善を提案
+- 既存の機能を壊さないことを確認
+- 変更理由を明確に説明
+- テストを更新
+
+### 5.2 リファクタリングの例
+```ruby
+# 改善前
+def visit_string_node(node)
+  if node.content.include?("\#{")
+    @result << "\""
+    @result << node.content
+    @result << "\""
+  else
+    @result << "\""
+    @result << node.content
+    @result << "\""
+  end
+end
+
+# 改善後
+def visit_string_node(node)
+  @result << "\""
+  @result << node.content
+  @result << "\""
+end
+```
+
+## 6. コミットメッセージ
+
+### 6.1 基本ルール
+- コンベンショナルコミット形式を使用
+- 変更内容を明確に記述
+- 関連するIssue番号を記載
+
+### 6.2 コミットメッセージの例
+```
+feat: 文字列補間の最適化を追加
+
+- 文字列補間内の式を最適化
+- 不要な空白を削除
+- テストケースを追加
+
+Closes #123
+``` 
