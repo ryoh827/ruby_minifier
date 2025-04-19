@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "ruby_minifier"
+require "kureha"
 require "optparse"
 
 options = {}
 opt_parser = OptionParser.new do |opts|
-  opts.banner = "Usage: ruby_minifier [options] <ruby_file>"
+  opts.banner = "Usage: kureha [options] <ruby_file>"
   
   opts.on("-h", "--help", "Show this help message") do
     puts opts

@@ -2,7 +2,7 @@
 
 source "https://rubygems.org"
 
-# Specify your gem's dependencies in ruby_minifier.gemspec
+# Specify your gem's dependencies in kureha.gemspec
 gemspec
 
 gem "irb"

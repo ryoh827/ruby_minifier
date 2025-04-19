@@ -1,22 +1,22 @@
 # frozen_string_literal: true
 
-require_relative "lib/ruby_minifier/version"
+require_relative "lib/kureha/version"
 
 Gem::Specification.new do |spec|
-  spec.name = "ruby_minifier"
+  spec.name = "kureha"
   spec.version = RubyMinifier::VERSION
   spec.authors = ["ryoh827"]
   spec.email = ["ryoh827.dev@gmail.com"]
 
   spec.summary = "A Ruby minifier."
   spec.description = "A safe and lightweight Ruby code minifier using Prism AST, preserving syntax while removing unnecessary spaces."
-  spec.homepage = "https://github.com/ryoh827/ruby_minifier"
+  spec.homepage = "https://github.com/ryoh827/kureha"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.1.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/ryoh827/ruby_minifier"
-  spec.metadata["changelog_uri"] = "https://github.com/ryoh827/ruby_minifier/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/ryoh827/kureha"
+  spec.metadata["changelog_uri"] = "https://github.com/ryoh827/kureha/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
