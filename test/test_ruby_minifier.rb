@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "test_helper"
-require 'ruby_minifier'
+require 'kureha'
 
 class TestRubyMinifier < Minitest::Test
   def setup
