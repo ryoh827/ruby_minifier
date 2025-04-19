@@ -1,4 +1,4 @@
-module RubyMinifier
+module Kureha
   class Configuration
     attr_accessor :space_after_operators
     attr_accessor :add_semicolons

@@ -14,7 +14,7 @@ opt_parser = OptionParser.new do |opts|
   end
   
   opts.on("-v", "--version", "Show version") do
-    puts RubyMinifier::VERSION
+    puts Kureha::VERSION
     exit
   end
 end
@@ -39,7 +39,7 @@ unless File.exist?(file_path)
 end
 
 begin
-  minified = RubyMinifier::Minifier.new.minify(File.read(file_path))
+  minified = Kureha::Minifier.new.minify(File.read(file_path))
   print minified  # puts の代わりに print を使用して余分な改行を避ける
 rescue StandardError => e
   puts "Error: #{e.message}"

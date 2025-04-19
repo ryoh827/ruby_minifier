@@ -3,13 +3,13 @@
 require "test_helper"
 require 'kureha'
 
-class TestRubyMinifier < Minitest::Test
+class TestKureha < Minitest::Test
   def setup
-    @minifier = RubyMinifier::Minifier.new
+    @minifier = Kureha::Minifier.new
   end
 
   def test_that_it_has_a_version_number
-    refute_nil ::RubyMinifier::VERSION
+    refute_nil ::Kureha::VERSION
   end
 
   def test_basic_minification
@@ -281,7 +281,7 @@ class TestRubyMinifier < Minitest::Test
 
   def test_invalid_code
     code = "def invalid_syntax"
-    assert_raises(RubyMinifier::ParseError) do
+    assert_raises(Kureha::ParseError) do
       @minifier.minify(code)
     end
   end

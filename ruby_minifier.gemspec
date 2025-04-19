@@ -4,7 +4,7 @@ require_relative "lib/kureha/version"
 
 Gem::Specification.new do |spec|
   spec.name = "kureha"
-  spec.version = RubyMinifier::VERSION
+  spec.version = Kureha::VERSION
   spec.authors = ["ryoh827"]
   spec.email = ["ryoh827.dev@gmail.com"]
 
