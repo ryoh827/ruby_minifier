@@ -1,7 +1,7 @@
 require 'prism'
 require_relative 'visitors/minify_visitor'
 
-module RubyMinifier
+module Kureha
   class ParseError < StandardError; end
 
   class Minifier

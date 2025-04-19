@@ -1,6 +1,6 @@
 require 'prism'
 
-module RubyMinifier
+module Kureha
   module Visitors
     class MinifyVisitor < Prism::Visitor
       OPERATORS = %w[+ - * / % ** & | ^ << >> && || < <= > >= == === != =~ !~ <=>].freeze
