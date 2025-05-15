@@ -10,4 +10,4 @@ gem "rake", "~> 13.0"
 
 gem "minitest", "~> 5.25"
 
-gem "standard", "~> 1.49"
+gem "standard", "~> 1.50"
